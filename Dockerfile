@@ -15,6 +15,14 @@ ENV DATABASE_CONFIG=/var/lib/drone/drone.sqlite
 
 ADD drone/drone /drone
 
+ENV GODEBUG=netdns=go
+
+ENV I_UNDERSTAND_I_AM_USING_AN_UNSTABLE_VERSION=true
+ENV I_AGREE_TO_FIX_BUGS_AND_NOT_FILE_BUGS=true
+
+ENV DRONE_DATABASE_DATASOURCE /var/lib/drone/drone.sqlite
+ENV DRONE_DATABASE_DRIVER sqlite3
+
 # Alpine Linux doesn't use pam, which means that there is no /etc/nsswitch.conf,
 # but Go and CGO rely on /etc/nsswitch.conf to check the order of DNS resolving.
 # To fix this we just create /etc/nsswitch.conf and add the following line:

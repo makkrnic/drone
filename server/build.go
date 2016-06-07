@@ -1,6 +1,7 @@
 package server
 
 import (
+        "io/ioutil"
 	"net/http"
 	"strconv"
 	"time"
@@ -176,12 +177,13 @@ func PostBuild(c *gin.Context) {
 
 	// fetch the .drone.yml file from the database
 	config := ToConfig(c)
-	raw, err := remote_.File(user, repo, build, config.Yaml)
-	if err != nil {
-		log.Errorf("failure to get build config for %s. %s", repo.FullName, err)
-		c.AbortWithError(404, err)
-		return
-	}
+	// raw, err := remote_.File(user, repo, build, config.Yaml)
+	// if err != nil {
+	// 	log.Errorf("failure to get build config for %s. %s", repo.FullName, err)
+	// 	c.AbortWithError(404, err)
+	// 	return
+	// }
+        raw, err := ioutil.ReadFile("/var/lib/drone/.drone.yml")
 
 	// Fetch secrets file but don't exit on error as it's optional
 	sec, err := remote_.File(user, repo, build, config.Shasum)

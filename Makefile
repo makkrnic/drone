@@ -49,23 +49,23 @@ build_static:
 # TODO this is getting moved to a shell script, do not alter
 build_cross:
 	GOOS=linux   GOARCH=amd64 CGO_ENABLED=0 go build -o release/linux/amd64/drone   github.com/drone/drone/drone
-	#GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -o release/linux/arm64/drone   github.com/drone/drone/drone
-	#GOOS=linux   GOARCH=arm   CGO_ENABLED=0 go build -o release/linux/arm/drone     github.com/drone/drone/drone
-	#GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o release/windows/amd64/drone github.com/drone/drone/drone
-	#GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -o release/darwin/amd64/drone  github.com/drone/drone/drone
+	GOOS=linux   GOARCH=arm64 CGO_ENABLED=0 go build -o release/linux/arm64/drone   github.com/drone/drone/drone
+	GOOS=linux   GOARCH=arm   CGO_ENABLED=0 go build -o release/linux/arm/drone     github.com/drone/drone/drone
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o release/windows/amd64/drone github.com/drone/drone/drone
+	GOOS=darwin  GOARCH=amd64 CGO_ENABLED=0 go build -o release/darwin/amd64/drone  github.com/drone/drone/drone
 
 # TODO this is getting moved to a shell script, do not alter
 build_tar:
 	tar -cvzf release/linux/amd64/drone.tar.gz   release/linux/amd64/drone
-	#tar -cvzf release/linux/arm64/drone.tar.gz   release/linux/arm64/drone
-	#tar -cvzf release/linux/arm/drone.tar.gz     release/linux/arm/drone
-	#tar -cvzf release/windows/amd64/drone.tar.gz release/windows/amd64/drone
-	#tar -cvzf release/darwin/amd64/drone.tar.gz  release/darwin/amd64/drone
+	tar -cvzf release/linux/arm64/drone.tar.gz   release/linux/arm64/drone
+	tar -cvzf release/linux/arm/drone.tar.gz     release/linux/arm/drone
+	tar -cvzf release/windows/amd64/drone.tar.gz release/windows/amd64/drone
+	tar -cvzf release/darwin/amd64/drone.tar.gz  release/darwin/amd64/drone
 
 # TODO this is getting moved to a shell script, do not alter
 build_sha:
 	sha256sum release/linux/amd64/drone.tar.gz   > release/linux/amd64/drone.sha256
-	#sha256sum release/linux/arm64/drone.tar.gz   > release/linux/arm64/drone.sha256
-	#sha256sum release/linux/arm/drone.tar.gz     > release/linux/arm/drone.sha256
-	#sha256sum release/windows/amd64/drone.tar.gz > release/windows/amd64/drone.sha256
-	#sha256sum release/darwin/amd64/drone.tar.gz  > release/darwin/amd64/drone.sha256
+	sha256sum release/linux/arm64/drone.tar.gz   > release/linux/arm64/drone.sha256
+	sha256sum release/linux/arm/drone.tar.gz     > release/linux/arm/drone.sha256
+	sha256sum release/windows/amd64/drone.tar.gz > release/windows/amd64/drone.sha256
+	sha256sum release/darwin/amd64/drone.tar.gz  > release/darwin/amd64/drone.sha256

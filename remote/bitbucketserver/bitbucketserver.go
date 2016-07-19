@@ -17,6 +17,7 @@ import (
 	"github.com/drone/drone/model"
 	"github.com/drone/drone/remote"
 	"github.com/mrjones/oauth"
+	"strings"
 )
 
 // Opts defines configuration options.
@@ -115,16 +116,26 @@ func (c *client) Login(res http.ResponseWriter, req *http.Request) (*model.User,
 
 	// TODO errors should never be ignored like this
 	response1, err := client.Get(fmt.Sprintf("%s/rest/api/1.0/users/%s", c.URL, login))
-	contents, err := ioutil.ReadAll(response1.Body)
+	if err != nil {
+		return nil, err
+	}
 	defer response1.Body.Close()
-	var mUser User                   // TODO  prefixing with m* is not a common convention in Go
-	json.Unmarshal(contents, &mUser) // TODO should not ignore error
 
+	contents, err := ioutil.ReadAll(response1.Body)
+	if err !=nil {
+		return nil, err
+	}
+
+	var user User
+	err = json.Unmarshal(contents, &user)
+	if err != nil {
+		return nil, err
+	}
 	return &model.User{
 		Login:  login,
-		Email:  mUser.EmailAddress,
+		Email:  user.EmailAddress,
 		Token:  accessToken.Token,
-		Avatar: avatarLink(mUser.EmailAddress),
+		Avatar: avatarLink(user.EmailAddress),
 	}, nil
 }
 
@@ -140,40 +151,11 @@ func (*client) Teams(u *model.User) ([]*model.Team, error) {
 }
 
 func (c *client) Repo(u *model.User, owner, name string) (*model.Repo, error) {
-
 	client := NewClientWithToken(&c.Consumer, u.Token)
-
-	url := fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s", c.URL, owner, name)
-
-	response, err := client.Get(url)
+	repo , err := c.FindRepo(client,owner,name)
 	if err != nil {
-		log.Error(err)
+		return nil, err
 	}
-	defer response.Body.Close()
-	contents, err := ioutil.ReadAll(response.Body)
-	bsRepo := BSRepo{}
-	json.Unmarshal(contents, &bsRepo)
-
-	repo := &model.Repo{
-		Name:      bsRepo.Slug,
-		Owner:     bsRepo.Project.Key,
-		Branch:    "master",
-		Kind:      model.RepoGit,
-		IsPrivate: !bsRepo.Project.Public, // TODO(josmo) verify this is corrrect
-		FullName:  fmt.Sprintf("%s/%s", bsRepo.Project.Key, bsRepo.Slug),
-	}
-
-	for _, item := range bsRepo.Links.Clone {
-		if item.Name == "http" {
-			repo.Clone = item.Href
-		}
-	}
-	for _, item := range bsRepo.Links.Self {
-		if item.Href != "" {
-			repo.Link = item.Href
-		}
-	}
-
 	return repo, nil
 }
 
@@ -189,8 +171,14 @@ func (c *client) Repos(u *model.User) ([]*model.RepoLite, error) {
 	}
 	defer response.Body.Close()
 	contents, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
 	var repoResponse Repos
-	json.Unmarshal(contents, &repoResponse)
+	err = json.Unmarshal(contents, &repoResponse)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, repo := range repoResponse.Values {
 		repos = append(repos, &model.RepoLite{
@@ -204,11 +192,22 @@ func (c *client) Repos(u *model.User) ([]*model.RepoLite, error) {
 }
 
 func (c *client) Perm(u *model.User, owner, repo string) (*model.Perm, error) {
-	// TODO need to fetch real permissions here
+	client := NewClientWithToken(&c.Consumer, u.Token)
 	perms := new(model.Perm)
+
+	// If you don't have access return none right away
+	_, err := c.FindRepo(client, owner, repo)
+	if err != nil {
+		return perms, err
+	}
+
+	// Must have admin to be able to list hooks. If have access the enable perms
+	_, err = client.Get(fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s/settings/hooks/%s", c.URL, owner, repo,"com.atlassian.stash.plugin.stash-web-post-receive-hooks-plugin:postReceiveHook"))
+	if err == nil {
+		perms.Push = true
+		perms.Admin = true
+	}
 	perms.Pull = true
-	perms.Admin = true
-	perms.Push = true
 	return perms, nil
 }
 
@@ -240,12 +239,19 @@ func (*client) Status(*model.User, *model.Repo, *model.Build, string) error {
 }
 
 func (c *client) Netrc(user *model.User, r *model.Repo) (*model.Netrc, error) {
-	u, err := url.Parse(c.URL) // TODO strip port from url
+	u, err := url.Parse(c.URL)
+	if err != nil {
+		return nil, err
+	}
+	//remove the port
+	tmp := strings.Split(u.Host, ":")
+	var host = tmp[0]
+
 	if err != nil {
 		return nil, err
 	}
 	return &model.Netrc{
-		Machine:  u.Host,
+		Machine:  host,
 		Login:    c.GitUserName,
 		Password: c.GitPassword,
 	}, nil
@@ -331,4 +337,47 @@ func (bs *client) DeleteHook(client *http.Client, project, slug, hook_key, link 
 	doDelete(client, bs.URL+enablePath)
 
 	return nil
+}
+
+func (c *client) FindRepo(client *http.Client, owner string, name string) (*model.Repo, error){
+
+	urlString := fmt.Sprintf("%s/rest/api/1.0/projects/%s/repos/%s", c.URL, owner, name)
+
+	response, err := client.Get(urlString)
+	if err != nil {
+		log.Error(err)
+	}
+	defer response.Body.Close()
+	contents, err := ioutil.ReadAll(response.Body)
+	bsRepo := BSRepo{}
+	err = json.Unmarshal(contents, &bsRepo)
+	if err !=nil {
+		return nil, err
+	}
+	repo := &model.Repo{
+		Name:      bsRepo.Slug,
+		Owner:     bsRepo.Project.Key,
+		Branch:    "master",
+		Kind:      model.RepoGit,
+		IsPrivate: true, // TODO(josmo) possibly set this as a setting - must always be private to use netrc
+		FullName:  fmt.Sprintf("%s/%s", bsRepo.Project.Key, bsRepo.Slug),
+	}
+
+	for _, item := range bsRepo.Links.Clone {
+		if item.Name == "http" {
+			uri, err := url.Parse(item.Href)
+			if err != nil {
+				return nil, err
+			}
+			uri.User = nil
+			repo.Clone = uri.String()
+		}
+	}
+	for _, item := range bsRepo.Links.Self {
+		if item.Href != "" {
+			repo.Link = item.Href
+		}
+	}
+
+	return repo, nil
 }

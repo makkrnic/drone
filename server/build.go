@@ -27,7 +27,7 @@ func GetBuilds(c *gin.Context) {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	c.IndentedJSON(http.StatusOK, builds)
+	c.JSON(http.StatusOK, builds)
 }
 
 func GetBuild(c *gin.Context) {
@@ -55,7 +55,7 @@ func GetBuild(c *gin.Context) {
 		Jobs []*model.Job `json:"jobs"`
 	}{build, jobs}
 
-	c.IndentedJSON(http.StatusOK, &out)
+	c.JSON(http.StatusOK, &out)
 }
 
 func GetBuildLast(c *gin.Context) {
@@ -74,7 +74,7 @@ func GetBuildLast(c *gin.Context) {
 		Jobs []*model.Job `json:"jobs"`
 	}{build, jobs}
 
-	c.IndentedJSON(http.StatusOK, &out)
+	c.JSON(http.StatusOK, &out)
 }
 
 func GetBuildLogs(c *gin.Context) {
@@ -112,6 +112,7 @@ func GetBuildLogs(c *gin.Context) {
 		// TODO implement limited streaming to avoid crashing the browser
 	}
 
+	c.Header("Content-Type", "application/json")
 	stream.Copy(c.Writer, r)
 }
 
@@ -134,6 +135,19 @@ func DeleteBuild(c *gin.Context) {
 		c.AbortWithError(404, err)
 		return
 	}
+
+	if job.Status != model.StatusRunning {
+		c.String(400, "Cannot cancel a non-running build")
+		return
+	}
+
+	job.Status = model.StatusKilled
+	job.Finished = time.Now().Unix()
+	if job.Started == 0 {
+		job.Started = job.Finished
+	}
+	job.ExitCode = 137
+	store.UpdateBuildJob(c, build, job)
 
 	bus.Publish(c, bus.NewEvent(bus.Cancelled, repo, build, job))
 	c.String(204, "")
@@ -243,6 +257,7 @@ func PostBuild(c *gin.Context) {
 	build.Finished = 0
 	build.Enqueued = time.Now().UTC().Unix()
 	for _, job := range jobs {
+		job.Error = ""
 		job.Status = model.StatusPending
 		job.Started = 0
 		job.Finished = 0

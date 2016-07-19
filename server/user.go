@@ -3,11 +3,14 @@ package server
 import (
 	"encoding/base32"
 	"net/http"
+	"strconv"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/securecookie"
 
 	"github.com/drone/drone/cache"
+	"github.com/drone/drone/model"
 	"github.com/drone/drone/router/middleware/session"
 	"github.com/drone/drone/shared/token"
 	"github.com/drone/drone/store"
@@ -18,13 +21,15 @@ func GetSelf(c *gin.Context) {
 }
 
 func GetFeed(c *gin.Context) {
+	latest, _ := strconv.ParseBool(c.Query("latest"))
+
 	repos, err := cache.GetRepos(c, session.User(c))
 	if err != nil {
 		c.String(500, "Error fetching repository list. %s", err)
 		return
 	}
 
-	feed, err := store.GetUserFeed(c, repos)
+	feed, err := store.GetUserFeed(c, repos, latest)
 	if err != nil {
 		c.String(500, "Error fetching feed. %s", err)
 		return
@@ -33,18 +38,55 @@ func GetFeed(c *gin.Context) {
 }
 
 func GetRepos(c *gin.Context) {
-	repos, err := cache.GetRepos(c, session.User(c))
+	var (
+		user     = session.User(c)
+		all, _   = strconv.ParseBool(c.Query("all"))
+		flush, _ = strconv.ParseBool(c.Query("flush"))
+	)
+
+	if flush {
+		log.Debugf("Evicting repository cache for user %s.", user.Login)
+		cache.DeleteRepos(c, user)
+	}
+
+	remote, err := cache.GetRepos(c, user)
 	if err != nil {
 		c.String(500, "Error fetching repository list. %s", err)
 		return
 	}
 
-	repos_, err := store.GetRepoListOf(c, repos)
+	repos, err := store.GetRepoListOf(c, remote)
 	if err != nil {
 		c.String(500, "Error fetching repository list. %s", err)
 		return
 	}
-	c.JSON(http.StatusOK, repos_)
+
+	if !all {
+		c.JSON(http.StatusOK, repos)
+		return
+	}
+
+	// below we combine the two lists to include both active and inactive
+	// repositories. This is displayed on the settings screen to enable
+	// toggling on / off repository settings.
+
+	repom := map[string]bool{}
+	for _, repo := range repos {
+		repom[repo.FullName] = true
+	}
+
+	for _, repo := range remote {
+		if repom[repo.FullName] {
+			continue
+		}
+		repos = append(repos, &model.Repo{
+			Avatar:   repo.Avatar,
+			FullName: repo.FullName,
+			Owner:    repo.Owner,
+			Name:     repo.Name,
+		})
+	}
+	c.JSON(http.StatusOK, repos)
 }
 
 func GetRemoteRepos(c *gin.Context) {
